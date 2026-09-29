@@ -10,9 +10,9 @@ Scanner de porta via linha de comando.
 - Output colorido estilo nmap
 - Exporta em JSON
 
-## Instalacao
+## Instalação
 
-So precisa de Python 3.8+. Sem dependencia externa.
+Só precisa de Python 3.8+. Sem dependencia externa.
 
 ```bash
 git clone https://github.com/<seu-user>/bit2.git
