@@ -1,5 +1,5 @@
-# motor de scan
-# aqui mora o connect, o banner grab e a identificacao
+# motor de scan TCP
+# UDP mora em udp.py, aqui so TCP + discovery
 
 import socket
 
@@ -34,8 +34,8 @@ def identify(banner):
 
 
 def scan_port(host, ip, port, timeout, service_detect):
-    # o coracao do negocio, uma porta por thread
-    result = {"port": port, "state": "closed", "service": None, "banner": None}
+    # scan TCP de uma porta (mantive o nome antigo pra nao quebrar nada)
+    result = {"port": port, "proto": "tcp", "state": "closed", "service": None, "banner": None}
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     s.settimeout(timeout)
     try:
