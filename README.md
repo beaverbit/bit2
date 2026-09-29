@@ -221,4 +221,4 @@ O autor não se responsabiliza por uso indevido.
 
 ## Licença
 
-MIT — faz o que quiser, só não me processa.
+MIT License
