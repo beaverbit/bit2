@@ -1,6 +1,6 @@
 # bit2
 
-Scanner de porta via linha de comando. Feito na vibe, sem frescura.
+Scanner de porta via linha de comando.
 
 ## O que faz
 
@@ -45,4 +45,4 @@ bit2 --top -sV --json out.json alvo.com
 
 ## Aviso
 
-So usa em rede que voce tem autorizacao. Escanear rede dos outros sem permissao e crime em varios lugares.
+Só usa em rede que você tem autorização. Escanear rede dos outros sem permissão é crime em vários lugares.
