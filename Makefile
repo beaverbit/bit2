@@ -8,10 +8,12 @@ NET     ?= 192.168.0.0/24
 PORTS   ?= 1-1024
 THREADS ?= 200
 
-.PHONY: help run top scan live full net net-live udp udp-top xml grep install uninstall lint fmt clean test
+.PHONY: help run top scan live full net net-live udp udp-top xml grep test test-cov lint fmt clean install uninstall ci
 
 help:
 	@echo "bit2 - targets:"
+	@echo ""
+	@echo "  -- scan --"
 	@echo "  make run TARGET=host          -> top 100 TCP, ordenado"
 	@echo "  make live TARGET=host         -> top 100 TCP, tempo real"
 	@echo "  make scan TARGET=host PORTS=x -> portas customizadas"
@@ -22,10 +24,19 @@ help:
 	@echo "  make udp-top TARGET=host      -> top UDP+TCP juntos"
 	@echo "  make xml TARGET=host          -> saida XML"
 	@echo "  make grep TARGET=host         -> saida grep-friendly"
-	@echo "  make install                  -> joga no /usr/local/bin"
-	@echo "  make uninstall                -> tira"
-	@echo "  make lint                     -> checa sintaxe"
+	@echo ""
+	@echo "  -- dev --"
+	@echo "  make test                     -> roda pytest"
+	@echo "  make test-cov                 -> pytest + cobertura"
+	@echo "  make lint                     -> checa sintaxe py + sh"
+	@echo "  make fmt                      -> roda black (se instalado)"
+	@echo "  make ci                       -> lint + test (o que a CI roda)"
 	@echo "  make clean                    -> limpa lixo"
+	@echo ""
+	@echo "  -- install --"
+	@echo "  make install                  -> instala com pip (editable)"
+	@echo "  make install-global           -> copia pra /usr/local/bin"
+	@echo "  make uninstall                -> tira"
 
 run:
 	@$(PY) bit2.py --top -sV $(TARGET)
@@ -59,32 +70,39 @@ xml:
 grep:
 	@$(PY) bit2.py --top -sV --output grep $(TARGET)
 
-install:
-	@install -m 0755 bit2.py /usr/local/bin/$(BIN)
-	@install -m 0755 bit2.sh /usr/local/bin/$(BIN).sh
-	@mkdir -p /usr/local/lib/bit2-pkg
-	@cp -r bit2 /usr/local/lib/bit2-pkg/
-	@echo "instalado em /usr/local/bin/$(BIN)"
+test:
+	@$(PY) -m pytest tests/ $(ARGS)
 
-uninstall:
-	@rm -f /usr/local/bin/$(BIN) /usr/local/bin/$(BIN).sh
-	@rm -rf /usr/local/lib/bit2-pkg
-	@echo "removido"
+test-cov:
+	@$(PY) -m pytest tests/ --cov=bit2 --cov-report=term-missing $(ARGS)
 
 lint:
-	@$(PY) -m py_compile bit2.py
-	@$(PY) -m py_compile bit2/*.py
+	@$(PY) -m py_compile bit2.py bit2/*.py
 	@bash -n bit2.sh
 	@echo "ok"
 
 fmt:
-	@command -v black >/dev/null 2>&1 && black bit2.py bit2/ || echo "black nao instalado, pulando"
+	@command -v black >/dev/null 2>&1 && black bit2.py bit2/ tests/ || echo "black nao instalado, pulando"
 
-test:
-	@bash -n bit2.sh
-	@$(PY) -m py_compile bit2.py bit2/*.py
-	@$(PY) bit2.py -p 22,80 --no-color --skip-discovery $(TARGET) || true
+ci: lint test
 
 clean:
-	@rm -rf __pycache__ bit2/__pycache__ *.pyc bit2/*.pyc *.json
+	@rm -rf __pycache__ bit2/__pycache__ tests/__pycache__ *.pyc bit2/*.pyc tests/*.pyc
+	@rm -rf .pytest_cache .coverage coverage.xml htmlcov
+	@rm -rf build dist *.egg-info
+	@rm -f *.json
 	@echo "limpo"
+
+install:
+	@$(PY) -m pip install -e ".[dev]"
+	@echo "instalado em modo editable (comando: bit2)"
+
+install-global:
+	@install -m 0755 bit2.py /usr/local/bin/$(BIN)
+	@install -m 0755 bit2.sh /usr/local/bin/$(BIN).sh
+	@echo "instalado em /usr/local/bin/$(BIN)"
+
+uninstall:
+	@$(PY) -m pip uninstall -y bit2 || true
+	@rm -f /usr/local/bin/$(BIN) /usr/local/bin/$(BIN).sh
+	@echo "removido"
