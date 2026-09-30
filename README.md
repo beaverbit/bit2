@@ -361,9 +361,3 @@ Configuração em [`.github/workflows/ci.yml`](.github/workflows/ci.yml).
 `bit2` é uma ferramenta de reconhecimento. **Só use em redes que você possui ou tem autorização explícita por escrito para escanear.** Escanear redes de terceiros sem permissão é crime em diversas jurisdições (no Brasil, enquadra-se na Lei 12.737/2012 — "Lei Carolina Dieckmann" — e no Marco Civil da Internet).
 
 O autor não se responsabiliza por uso indevido.
-
----
-
-## Licença
-
-MIT 
