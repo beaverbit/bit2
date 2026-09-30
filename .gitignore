@@ -16,4 +16,4 @@ dist/
 .idea/
 .vscode/
 .DS_Store
-.github/workflows/
+*.xml
