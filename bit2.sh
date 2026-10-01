@@ -7,7 +7,7 @@ set -euo pipefail
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PY="${PYTHON:-python3}"
 
-# chega se tem python
+# checa se tem python
 if ! command -v "$PY" >/dev/null 2>&1; then
     echo "erro: nao achei $PY no PATH" >&2
     exit 1
