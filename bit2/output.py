@@ -1,7 +1,6 @@
 # formatadores de saida
 # normal (bonito), xml (nmap-like) e grep (pipeline)
 # xml e grep SO mostram portas relevantes (open / open|filtered)
-# closed e filtered ficam de fora, é o que nmap faz por padrao
 
 import time
 import xml.sax.saxutils as sax
@@ -9,18 +8,16 @@ import xml.sax.saxutils as sax
 from . import __version__
 
 
-# estados que interessam pra output maquina (aberta ou "nao sei")
+# estados que interessam pra output maquina
 RELEVANT_STATES = ("open", "open|filtered")
 
 
 def is_open(r):
-    # so conta como aberta de verdade, sem sombra de duvida
-    # open|filtered NAO conta, é indeterminado
+    # so conta como aberta de verdade
     return r.get("state") == "open"
 
 
 def fmt_normal_header(host, ip, rdns, ports_count, threads, timeout, proto):
-    # monta o bloco de cabecalho como string (o print rola no cli)
     linhas = []
     linhas.append("")
     linhas.append(f"bit2 scan report for {host}")
@@ -38,13 +35,10 @@ def fmt_normal_header(host, ip, rdns, ports_count, threads, timeout, proto):
 
 
 def _relevant(results):
-    # filtra so o que importa pra output maquina
     return [r for r in results if r["state"] in RELEVANT_STATES]
 
 
 def fmt_xml(reports):
-    # gera XML estilo nmap (simplificado mas parseavel por ferramentas)
-    # reports pode ser 1 dict ou lista
     if isinstance(reports, dict):
         reports = [reports]
     ts = int(time.time())
@@ -77,7 +71,12 @@ def fmt_xml(reports):
             if r.get("service"):
                 svc_name = sax.quoteattr(r["service"].lower())
                 ver = sax.quoteattr(r.get("banner") or "")
-                out.append(f'        <service name={svc_name} version={ver}/>')
+                # confidence so se nao for zero
+                conf = r.get("confidence") or 0.0
+                if conf > 0:
+                    out.append(f'        <service name={svc_name} version={ver} conf="{conf:.2f}"/>')
+                else:
+                    out.append(f'        <service name={svc_name} version={ver}/>')
             out.append('      </port>')
         out.append('    </ports>')
         out.append('  </host>')
@@ -86,8 +85,7 @@ def fmt_xml(reports):
 
 
 def fmt_grep(reports):
-    # formato host:porta:proto:estado:servico:banner
-    # so portas relevantes, facil de dar grep/awk depois
+    # formato host:porta:proto:estado:servico:confidence:banner
     if isinstance(reports, dict):
         reports = [reports]
     linhas = []
@@ -96,6 +94,8 @@ def fmt_grep(reports):
         for r in _relevant(rep["results"]):
             proto = r.get("proto", "tcp")
             svc = r.get("service") or ""
+            conf = r.get("confidence") or 0.0
+            conf_str = f"{conf:.2f}" if conf > 0 else ""
             banner = (r.get("banner") or "").replace(":", " ").replace("\n", " ")
-            linhas.append(f"{ip}:{r['port']}:{proto}:{r['state']}:{svc}:{banner}".rstrip(":"))
+            linhas.append(f"{ip}:{r['port']}:{proto}:{r['state']}:{svc}:{conf_str}:{banner}".rstrip(":"))
     return "\n".join(linhas)

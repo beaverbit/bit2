@@ -18,7 +18,7 @@ TOP_PORTS = [
     49152, 49153, 49154, 49155, 49156, 49157,
 ]
 
-# portas UDP mais comuns (baseado no top do nmap)
+# portas UDP mais comuns
 UDP_TOP_PORTS = [
     7, 9, 17, 19, 49, 53, 67, 68, 69, 80, 88, 111, 120, 123, 135, 136, 137,
     138, 139, 158, 161, 162, 177, 389, 407, 427, 443, 445, 464, 500, 514, 515,
@@ -41,23 +41,27 @@ UDP_TOP_PORTS = [
     49300,
 ]
 
-# assinatura de servico por banner, na base do regex
+# assinatura de servico por banner
+# formato: (nome, regex, confidence)
+# a confidence e mais alta quando o banner e bem especifico
 # ordem importa, primeiro que casar ganha
 SIGS = [
-    ("SSH", re.compile(rb"^SSH-([\d.]+)-([\w.]+)")),
-    ("HTTP", re.compile(rb"^HTTP/[\d.]+ \d+")),
-    ("FTP", re.compile(rb"^220[- ].*FTP", re.I)),
-    ("SMTP", re.compile(rb"^220[- ].*(SMTP|ESMTP|Postfix|Exim|Sendmail)", re.I)),
-    ("POP3", re.compile(rb"^\+OK")),
-    ("IMAP", re.compile(rb"^\* OK")),
-    ("MySQL", re.compile(rb"^.{3}\x00.{1}\x00")),
-    ("Redis", re.compile(rb"^[-+#]")),
-    ("MongoDB", re.compile(rb"^.{4}\x00\x00\x00")),
-    ("VNC", re.compile(rb"^RFB \d{3}\.\d{3}")),
-    ("Telnet", re.compile(rb"^[\r\n]*\xff[\xfb-\xfe]")),
-    ("RDP", re.compile(rb"^\x03\x00\x00")),
-    ("SMB", re.compile(rb"^\x00\x00\x00")),
-    ("Memcached", re.compile(rb"^VERSION ")),
+    ("SSH", re.compile(rb"^SSH-([\d.]+)-([\w.]+)"), 1.00),
+    ("HTTP", re.compile(rb"^HTTP/[\d.]+ \d+"), 0.98),
+    ("FTP", re.compile(rb"^220[- ].*FTP", re.I), 0.90),
+    ("SMTP", re.compile(rb"^220[- ].*(SMTP|ESMTP|Postfix|Exim|Sendmail)", re.I), 0.92),
+    ("POP3", re.compile(rb"^\+OK.*(POP|ready)", re.I), 0.85),
+    ("IMAP", re.compile(rb"^\* OK.*(IMAP|server)", re.I), 0.85),
+    ("MySQL", re.compile(rb"^.{3}\x00.{1}\x00"), 0.90),
+    # redis manda erro na linguagem dele, tem que ser bem especifico
+    ("Redis", re.compile(rb"^-ERR unknown command"), 0.95),
+    ("Redis", re.compile(rb"^-NOAUTH Authentication required"), 0.95),
+    ("MongoDB", re.compile(rb"^.{4}\x00\x00\x00"), 0.70),
+    ("VNC", re.compile(rb"^RFB \d{3}\.\d{3}"), 1.00),
+    ("Telnet", re.compile(rb"^[\r\n]*\xff[\xfb-\xfe]"), 0.85),
+    ("RDP", re.compile(rb"^\x03\x00\x00"), 0.75),
+    ("SMB", re.compile(rb"^\x00\x00\x00"), 0.60),
+    ("Memcached", re.compile(rb"^VERSION "), 0.95),
 ]
 
 # payload pra cutucar alguns servicos e ver se responde (TCP)
@@ -66,26 +70,21 @@ PROBES = {
     8080: b"HEAD / HTTP/1.0\r\nHost: %s\r\n\r\n",
     8000: b"HEAD / HTTP/1.0\r\nHost: %s\r\n\r\n",
     8443: b"HEAD / HTTP/1.0\r\nHost: %s\r\n\r\n",
-    443: b"",  # https nao da pra falar cru, deixa quieto
+    443: b"",
 }
 
 # payloads UDP por porta conhecida
-# se nao tiver, manda pacote vazio mesmo
 UDP_PAYLOADS = {
-    # DNS: query vazia pra root NS
     53: (
         b"\x12\x34\x01\x00\x00\x01\x00\x00\x00\x00\x00\x00"
         b"\x00\x00\x02\x00\x01"
     ),
-    # NTP: client request v3
     123: b"\x1b" + b"\x00" * 47,
-    # SNMP v1 get-request pra sysDescr
     161: (
         b"\x30\x26\x02\x01\x00\x04\x06public\xa0\x19"
         b"\x02\x04\x00\x00\x00\x01\x02\x01\x00\x02\x01\x00"
         b"\x30\x0b\x30\x09\x06\x05\x2b\x06\x01\x02\x01\x01\x05\x00"
     ),
-    # SSDP M-SEARCH
     1900: (
         b"M-SEARCH * HTTP/1.1\r\n"
         b"HOST: 239.255.255.250:1900\r\n"
@@ -93,14 +92,11 @@ UDP_PAYLOADS = {
         b"MX: 1\r\n"
         b"ST: ssdp:all\r\n\r\n"
     ),
-    # mDNS query
     5353: (
         b"\x00\x00\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00"
         b"\x05local\x00\x00\xff\x00\x01"
     ),
-    # IKE (ISAKMP) - initiator
     500: b"\x00" * 28,
-    # NetBIOS name service
     137: (
         b"\x82\x28\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00"
         b"\x20CKAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\x00\x00\x21\x00\x01"

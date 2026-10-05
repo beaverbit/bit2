@@ -53,8 +53,6 @@ def print_result(r):
         cor_state = GRN
     elif state == "closed":
         cor_state = RED
-    elif state == "open|filtered":
-        cor_state = YEL
     else:
         cor_state = YEL
 
@@ -97,24 +95,22 @@ def clear_progress():
 
 
 def _dispatch(job):
-    # job = (proto, host, ip, port, timeout, service)
-    proto, host, ip, port, timeout, service = job
+    # job = (proto, host, ip, port, timeout, service, retries)
+    proto, host, ip, port, timeout, service, retries = job
     if proto == "udp":
-        return scan_udp_port(ip, port, timeout, service)
-    return scan_port(host, ip, port, timeout, service)
+        return scan_udp_port(ip, port, timeout, service, retries)
+    return scan_port(host, ip, port, timeout, service, retries)
 
 
 def _split_counts(results):
-    # conta abertas de verdade, indeterminadas (open|filtered) e fechadas
     n_open = sum(1 for r in results if r["state"] == "open")
     n_unkn = sum(1 for r in results if r["state"] == "open|filtered")
     n_closed = sum(1 for r in results if r["state"] == "closed")
-    return n_open, n_unkn, n_closed
+    n_filt = sum(1 for r in results if r["state"] == "filtered")
+    return n_open, n_unkn, n_closed, n_filt
 
 
 def scan_single_target(host, ip, jobs, args, proto_label, human_output):
-    # human_output = True -> mostra header/tabela/resumo
-    #                False -> modo xml/grep, so coleta os dados
     rdns = reverse(ip) if ip != host else None
 
     if human_output:
@@ -163,15 +159,16 @@ def scan_single_target(host, ip, jobs, args, proto_label, human_output):
             elif args.verbose and not args.open_only:
                 print_result(r)
 
-    n_open, n_unkn, n_closed = _split_counts(results)
+    n_open, n_unkn, n_closed, n_filt = _split_counts(results)
     dt = time.time() - t0
 
     if human_output:
         print(c("-" * 52, DIM))
-        # linha de contagem sempre mostra abertas de verdade
         linha = f"{c('abertas:', B)} {c(str(n_open), GRN)}/{len(jobs)}"
         if n_unkn > 0:
             linha += f"  {c(str(n_unkn) + ' indeterminadas', YEL)}"
+        if n_filt > 0:
+            linha += f"  {c(str(n_filt) + ' filtradas', YEL)}"
         if args.verbose:
             linha += f"  {c(str(n_closed) + ' fechadas', RED)}"
         linha += f"  {c(f'({dt:.2f}s)', DIM)}"
@@ -187,6 +184,7 @@ def scan_single_target(host, ip, jobs, args, proto_label, human_output):
         "open": n_open,
         "open_filtered": n_unkn,
         "closed": n_closed,
+        "filtered": n_filt,
         "results": sorted(results, key=lambda x: (x.get("proto", "tcp"), x["port"])),
     }
 
@@ -207,10 +205,11 @@ def build_parser():
     ap.add_argument("--also-tcp", action="store_true", help="com -sU, escaneia TCP tambem")
     ap.add_argument("-t", "--threads", type=int, default=100, help="threads (default 100)")
     ap.add_argument("-T", "--timeout", type=float, default=1.5, help="timeout em segundos (default 1.5)")
+    ap.add_argument("--retry", type=int, default=0, metavar="N", help="tentativas extras em portas filtered (default 0)")
     ap.add_argument("-sV", "--service", action="store_true", help="detecta servico/banner")
     ap.add_argument("--json", dest="json_out", metavar="FILE", help="salva resultado em json")
     ap.add_argument("--output", choices=["normal", "xml", "grep"], default="normal", help="formato de saida (default normal)")
-    ap.add_argument("-v", "--verbose", action="store_true", help="mostra porta fechada tbm (so no modo normal)")
+    ap.add_argument("-v", "--verbose", action="store_true", help="mostra porta fechada/filtrada tbm (so no modo normal)")
     ap.add_argument("--no-color", action="store_true", help="sem cor")
     ap.add_argument("--open-only", action="store_true", help="mostra so porta aberta")
     ap.add_argument("--live", action="store_true", help="imprime em tempo real (sem ordenar)")
@@ -231,7 +230,6 @@ def _load_lines(path):
 
 
 def _resolve_port_source(args):
-    # prioridade: --port-file > -p > (None, deixa o caller decidir top)
     if args.port_file:
         linhas = _load_lines(args.port_file)
         if not linhas:
@@ -260,9 +258,12 @@ def main(argv=None):
     if args.no_color:
         os.environ["NO_COLOR"] = "1"
 
+    if args.retry < 0:
+        print(c("erro: --retry nao pode ser negativo", RED), file=sys.stderr)
+        sys.exit(1)
+
     human_output = args.output == "normal"
 
-    # ---- resolve portas TCP e UDP ----
     explicito = _resolve_port_source(args)
     tcp_ports = []
     udp_ports = []
@@ -281,7 +282,6 @@ def main(argv=None):
         print(c("erro: nenhuma porta pra escanear", RED), file=sys.stderr)
         sys.exit(1)
 
-    # ---- resolve alvos ----
     raw = args.host
     if args.target_file:
         linhas = _load_lines(args.target_file)
@@ -307,7 +307,6 @@ def main(argv=None):
             file=sys.stderr,
         )
 
-    # discovery
     discovery_ports = None
     if args.discovery_ports:
         try:
@@ -327,13 +326,12 @@ def main(argv=None):
 
     filtrados = total_alvos_originais - len(targets)
 
-    # ---- monta jobs por host ----
     def jobs_for(host, ip):
         jobs = []
         for p in tcp_ports:
-            jobs.append(("tcp", host, ip, p, args.timeout, args.service))
+            jobs.append(("tcp", host, ip, p, args.timeout, args.service, args.retry))
         for p in udp_ports:
-            jobs.append(("udp", host, ip, p, args.timeout, args.service))
+            jobs.append(("udp", host, ip, p, args.timeout, args.service, args.retry))
         return jobs
 
     proto_label = "tcp+udp" if (tcp_ports and udp_ports) else ("udp" if udp_ports else "tcp")
@@ -354,7 +352,6 @@ def main(argv=None):
 
     dt_global = time.time() - t_global
 
-    # ---- resumo final (so no modo normal) ----
     if multi and human_output:
         print()
         print(c("=" * 52, DIM))
@@ -367,7 +364,6 @@ def main(argv=None):
             u = r.get("open_filtered", 0)
             total_open += n
             total_unkn += u
-            # tag so fica "up" se achou porta aberta de verdade
             if n > 0:
                 tag = c(" up ", GRN)
             elif u > 0:
@@ -392,13 +388,11 @@ def main(argv=None):
         linha_final += f"  {c(f'({dt_global:.2f}s)', DIM)}"
         print(linha_final)
 
-    # ---- output alternativo (vai limpo no stdout) ----
     if args.output == "xml":
         print(out_fmt.fmt_xml(all_reports))
     elif args.output == "grep":
         print(out_fmt.fmt_grep(all_reports))
 
-    # ---- json (sempre em arquivo, aviso no stderr) ----
     if args.json_out:
         payload = {
             "targets": len(all_reports),
