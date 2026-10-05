@@ -17,6 +17,7 @@
 - **Zero dependências** — só `stdlib`, roda em qualquer máquina com Python 3.8+
 - **CLI-first** — sem GUI, sem config file, só flags diretas
 - **Multi-protocolo** — TCP connect scan e UDP scan
+- **Classificação precisa** — `open` / `closed` / `filtered` (alinhado com nmap)
 - **Output flexível** — tabela colorida, XML (nmap-like), grep ou JSON
 - **Scan concorrente** — varredura paralela via `ThreadPoolExecutor`
 
@@ -28,15 +29,16 @@ Foi escrito como exercício de sistemas + redes, e acabou virando uma ferramenta
 
 | Feature | Status |
 |---|---|
-| TCP connect scan (`connect_ex`) | ✅ |
+| TCP connect scan com classificação `open`/`closed`/`filtered` | ✅ |
 | UDP scan com detecção de `closed` via ICMP | ✅ |
+| Retry configurável em portas filtered (`--retry N`) | ✅ |
 | Concorrência via threads (`concurrent.futures`) | ✅ |
 | Top 100 portas TCP + top UDP (baseado no nmap) | ✅ |
 | Range customizado (`1-1024`, `22,80,8000-8100`) | ✅ |
 | CIDR (`192.168.0.0/24`) + range de IP (`10.0.0.1-20`) + lista | ✅ |
 | Host discovery TCP (sem root) | ✅ |
 | Banner grabbing com probe por porta | ✅ |
-| Identificação de serviço por assinatura regex | ✅ |
+| Identificação de serviço por assinatura regex com confidence | ✅ |
 | Output tabelado com ANSI colors | ✅ |
 | Output XML compatível com nmap | ✅ |
 | Output grep-friendly pra pipeline | ✅ |
@@ -134,10 +136,13 @@ bit2 --target-file hosts.txt --top
 # lê portas de um arquivo
 bit2 --port-file ports.txt -sV scanme.nmap.org
 
+# retry em portas filtered (útil em redes com packet loss)
+bit2 -p 22,80,443 --retry 2 -T 0.5 alvo.com
+
 # modo live (streaming, sem ordenar por porta)
 bit2 --live -sV scanme.nmap.org
 
-# modo verboso, mostra portas fechadas também
+# modo verboso, mostra portas fechadas e filtradas também
 bit2 -p 1-100 -v 10.0.0.1
 
 # desabilitar cor (útil pra log em arquivo)
@@ -160,14 +165,16 @@ PORT                STATE         SERVICE     VERSION
 22/tcp              open          SSH         SSH-2.0-OpenSSH_6.6.1p1
 80/tcp              open          HTTP        HTTP/1.1 200
 ----------------------------------------------------
-abertas: 2/100  (1.55s)
+abertas: 2/100  1 filtradas  (1.55s)
 ```
 
 ### Output grep
 
+Formato: `ip:porta:proto:estado:servico:confidence:banner`
+
 ```
-45.33.32.156:22:tcp:open:SSH:SSH-2.0-OpenSSH_6.6.1p1
-45.33.32.156:80:tcp:open:HTTP:HTTP/1.1 200
+45.33.32.156:22:tcp:open:SSH:1.00:SSH-2.0-OpenSSH_6.6.1p1
+45.33.32.156:80:tcp:open:HTTP:0.98:HTTP/1.1 200
 ```
 
 ### Output XML
@@ -183,11 +190,11 @@ abertas: 2/100  (1.55s)
     <ports>
       <port protocol="tcp" portid="22">
         <state state="open" reason="syn-ack"/>
-        <service name="ssh" version="SSH-2.0-OpenSSH_6.6.1p1"/>
+        <service name="ssh" version="SSH-2.0-OpenSSH_6.6.1p1" conf="1.00"/>
       </port>
       <port protocol="tcp" portid="80">
         <state state="open" reason="syn-ack"/>
-        <service name="http" version="HTTP/1.1 200"/>
+        <service name="http" version="HTTP/1.1 200" conf="0.98"/>
       </port>
     </ports>
   </host>
@@ -210,10 +217,11 @@ abertas: 2/100  (1.55s)
 | `--also-tcp` | Com `-sU`, escaneia TCP também | off |
 | `-t, --threads` | Threads concorrentes | `100` |
 | `-T, --timeout` | Timeout por porta em segundos | `1.5` |
+| `--retry N` | Tentativas extras em portas `filtered` | `0` |
 | `-sV, --service` | Banner grabbing + detecção de serviço | off |
 | `--json FILE` | Salva resultado em JSON | — |
 | `--output MODE` | Formato de saída: `normal`, `xml`, `grep` | `normal` |
-| `-v, --verbose` | Mostra portas fechadas também (só modo normal) | off |
+| `-v, --verbose` | Mostra portas fechadas e filtradas (só modo normal) | off |
 | `--open-only` | Suprime tudo que não estiver aberto | off |
 | `--live` | Imprime em tempo real (sem ordenar) | off |
 | `--no-progress` | Desabilita barra de progresso | off |
@@ -234,21 +242,23 @@ bit2/
 │   ├── __init__.py        # versão
 │   ├── cli.py             # argparse + main()
 │   ├── colors.py          # helpers ANSI
-│   ├── scanner.py         # TCP connect + discovery
+│   ├── scanner.py         # TCP connect + classificação + discovery
 │   ├── udp.py             # UDP scan com ICMP detection
-│   ├── signatures.py      # TOP_PORTS, SIGS, PROBES, UDP_PAYLOADS
+│   ├── signatures.py      # TOP_PORTS, SIGS (com confidence), PROBES, UDP_PAYLOADS
 │   ├── targets.py         # parsing de alvos/portas + discovery
 │   └── output.py          # formatadores (xml, grep, is_open)
-├── tests/                 # suite pytest
+├── tests/                 # suite pytest (65 testes)
 │   ├── test_targets.py    # parsing
-│   ├── test_scanner.py    # TCP scan (mock)
+│   ├── test_scanner.py    # TCP scan + classificação (mock)
 │   ├── test_udp.py        # UDP scan (mock)
-│   └── test_output.py     # formatadores
+│   ├── test_output.py     # formatadores
+│   └── test_integration.py # servidor TCP/UDP local
 ├── .github/workflows/
 │   └── ci.yml             # GitHub Actions
 ├── bit2.py                # entry point (trivial)
 ├── bit2.sh                # wrapper shell
 ├── pyproject.toml         # empacotamento + config de testes
+├── SECURITY.md            # política de segurança
 ├── Makefile               # atalhos
 └── README.md
 ```
@@ -275,8 +285,14 @@ bit2/
 **Por que TCP connect scan e não SYN scan?**
 SYN scan precisa de raw socket + root. Connect scan funciona sem privilégio algum, é mais portável (macOS, WSL, containers). A trade-off é ser mais "ruidoso" (gera log no alvo), mas pra reconhecimento isso é aceitável.
 
+**Por que classificar `filtered` separado de `closed`?**
+`connect_ex()` retorna um errno por porta. `ECONNREFUSED` significa que o host respondeu com RST — porta fechada. `ETIMEDOUT`, `EHOSTUNREACH`, `ENETUNREACH` significam que nada voltou (firewall dropou ou rota ruim) — porta filtrada. Tratar tudo como `closed` é simplificação perigosa: você perde a informação de que existe firewall no caminho. O nmap usa exatamente essa separação.
+
 **Por que UDP scan usa `connect()` antes de `send()`?**
 Sem `connect()`, o kernel Linux engole o ICMP port-unreachable e o socket nunca vê `ECONNREFUSED`. Com `connect()` (que em UDP é só associar destino, sem handshake), o kernel entrega o ICMP corretamente no próximo `recv()`. Sem isso, toda porta UDP fechada vira `open|filtered` — mentira.
+
+**Por que assinatura de banner tem campo de confidence?**
+Algumas assinaturas são mais específicas que outras. SSH começa com `SSH-2.0-` — é praticamente 100% de certeza. HTTP também é altíssimo. Mas algo como `MongoDB` (que casa com qualquer coisa que tenha 4 bytes seguidos de 3 nulls) é mais frágil. O campo `confidence` deixa o consumidor (você, uma ferramenta downstream, um script) decidir se confia. Fica no JSON e XML mas não polui o output normal.
 
 **Por que assinatura de banner por regex e não heurística mais sofisticada?**
 O objetivo é cobertura ampla com complexidade baixa. Um dicionário de regexes cobre ~80% dos casos reais. Fingerprinting profundo (tipo `nmap -sV`) exigiria uma base enorme de probes customizados — fora do escopo.
@@ -285,7 +301,7 @@ O objetivo é cobertura ampla com complexidade baixa. Um dicionário de regexes 
 Pra não sujar output quando redirecionado (`bit2 ... > out.txt`). Regra padrão de CLIs bem-comportados. Também respeita `NO_COLOR` env var (convenção do https://no-color.org).
 
 **Por que XML só com portas relevantes?**
-XML é pra consumo por ferramentas, não debug humano. Portas `closed` poluem e não interessam. `-v` no modo XML vira no-op — quem quer debug usa modo normal.
+XML é pra consumo por ferramentas, não debug humano. Portas `closed` e `filtered` poluem e não interessam. `-v` no modo XML vira no-op — quem quer debug usa modo normal.
 
 ---
 
@@ -296,6 +312,7 @@ XML é pra consumo por ferramentas, não debug humano. Portas `closed` poluem e 
 - **Sem IPv6** — apenas IPv4 (`AF_INET`)
 - **Banner grabbing passivo** — não envia probes customizados pra todos os serviços, apenas pros que estão mapeados em `PROBES`
 - **UDP sem root é impreciso** — portas `closed` só são detectadas se o ICMP port-unreachable chegar. Sem root, `open|filtered` pode ser tanto porta filtrada quanto aberta que não respondeu
+- **Scheduler global não é paralelo entre hosts** — em scans multi-alvo, cada host é processado sequencialmente (portas dentro do host são paralelas). Vale otimização futura pra redes grandes
 - **`-t` alto pode atingir file descriptor limit** — se rodar em sistema com `ulimit -n` baixo, use `ulimit -n 4096` antes
 - **`make install` requer Python com suporte a `venv`** — em distros com PEP 668 (Ubuntu 24+), usar venv antes
 
@@ -343,16 +360,19 @@ Configuração em [`.github/workflows/ci.yml`](.github/workflows/ci.yml).
 - [x] Output XML (nmap-like)
 - [x] Output grep
 - [x] Testes unitários com `pytest`
+- [x] Testes de integração com servidor local
 - [x] CI via GitHub Actions
+- [x] Classificação TCP precisa (`open`/`closed`/`filtered`)
+- [x] Retry em timeout (`--retry N`)
+- [ ] Timing templates (`-T0` a `-T5`)
 - [ ] SYN scan opcional (requer root)
 - [ ] Fingerprint de OS via TTL e TCP window size
+- [ ] Scheduler global multi-host (paralelismo entre hosts)
 - [ ] IPv6
+- [ ] Diff entre scans (`--diff`)
 - [ ] Publicação no PyPI
 - [ ] Dockerfile
 - [ ] Release automatizado
-- [ ] Timing templates (`-T0` a `-T5`)
-- [ ] Retry em timeout
-- [ ] Diff entre scans (`--diff`)
 
 ---
 
