@@ -15,9 +15,9 @@ def _fake_report():
         "proto": "tcp",
         "duration": 1.5,
         "results": [
-            {"port": 22, "proto": "tcp", "state": "open", "service": "SSH", "banner": "SSH-2.0-OpenSSH_8.9"},
-            {"port": 80, "proto": "tcp", "state": "open", "service": "HTTP", "banner": "HTTP/1.1 200"},
-            {"port": 9999, "proto": "tcp", "state": "closed", "service": None, "banner": None},
+            {"port": 22, "proto": "tcp", "state": "open", "service": "SSH", "banner": "SSH-2.0-OpenSSH_8.9", "confidence": 1.00},
+            {"port": 80, "proto": "tcp", "state": "open", "service": "HTTP", "banner": "HTTP/1.1 200", "confidence": 0.98},
+            {"port": 9999, "proto": "tcp", "state": "closed", "service": None, "banner": None, "confidence": 0.0},
         ],
     }
 
@@ -31,6 +31,9 @@ class TestIsOpen:
 
     def test_closed_falso(self):
         assert is_open({"state": "closed"}) is False
+
+    def test_filtered_falso(self):
+        assert is_open({"state": "filtered"}) is False
 
 
 class TestFmtXml:
@@ -57,13 +60,16 @@ class TestFmtXml:
         assert "80" in portids
         assert "9999" not in portids
 
-    def test_xml_tem_service(self):
+    def test_xml_tem_service_com_confidence(self):
         out = fmt_xml(_fake_report())
         root = ET.fromstring(out)
         services = root.findall(".//service")
         names = [s.get("name") for s in services]
         assert "ssh" in names
         assert "http" in names
+        # confidence tem que estar no ssh
+        ssh = [s for s in services if s.get("name") == "ssh"][0]
+        assert ssh.get("conf") == "1.00"
 
     def test_xml_lista_de_reports(self):
         out = fmt_xml([_fake_report(), _fake_report()])
@@ -85,9 +91,10 @@ class TestFmtGrep:
         assert len(linhas) == 2
         assert "9999" not in out
 
-    def test_grep_formato(self):
+    def test_grep_formato_com_confidence(self):
         out = fmt_grep(_fake_report())
-        assert "45.33.32.156:22:tcp:open:SSH:SSH-2.0-OpenSSH_8.9" in out
+        # formato: ip:porta:proto:state:service:confidence:banner
+        assert "45.33.32.156:22:tcp:open:SSH:1.00:SSH-2.0-OpenSSH_8.9" in out
 
     def test_grep_remove_dois_pontos_do_banner(self):
         rep = _fake_report()
@@ -95,7 +102,7 @@ class TestFmtGrep:
         out = fmt_grep(rep)
         linha = [l for l in out.split("\n") if ":22:" in l][0]
         partes = linha.split(":")
-        assert len(partes) >= 5
+        assert len(partes) >= 6
 
     def test_grep_dict_unico(self):
         out = fmt_grep(_fake_report())
