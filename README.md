@@ -3,7 +3,6 @@
 > Scanner de rede CLI escrito em Python puro, sem dependências externas.
 > Feito pra ser rápido, legível e útil de verdade na linha de comando.
 
-[![CI](https://github.com/beaverbit/bit2/actions/workflows/ci.yml/badge.svg)](https://github.com/beaverbit/bit2/actions/workflows/ci.yml)
 ![Python](https://img.shields.io/badge/python-3.8%2B-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Dependencies](https://img.shields.io/badge/dependencies-zero-success)
