@@ -1,5 +1,4 @@
 # testes de parsing de alvos e portas
-# sem rede real, so logica pura
 
 import pytest
 
