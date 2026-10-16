@@ -1,6 +1,4 @@
 #!/usr/bin/env bash
-# wrapper maroto do bit2
-# se der ruim no python, pelo menos avisa direito
 
 set -euo pipefail
 
