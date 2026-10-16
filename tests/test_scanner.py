@@ -1,5 +1,4 @@
 # testes do motor TCP
-# mocka socket pra nao tocar rede de verdade
 
 import errno
 import socket
