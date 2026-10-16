@@ -1,5 +1,4 @@
-# bit2 - makefile do bagulho
-# so o basico que funciona
+# bit2 - makefile
 
 PY      ?= python3
 BIN     := bit2
