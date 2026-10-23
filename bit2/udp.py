@@ -19,8 +19,11 @@ def _one_probe(ip, port, timeout, payload):
     try:
         s.connect((ip, port))
         s.settimeout(timeout)
+        # se nao tem payload conhecido, manda 1 byte pra provocar ICMP
+        # port-unreachable em porta fechada (senao fica open|filtered)
+        data_to_send = payload if payload else b"\x00"
         try:
-            s.send(payload)
+            s.send(data_to_send)
         except Exception:
             pass
         try:

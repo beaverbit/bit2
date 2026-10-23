@@ -65,20 +65,47 @@ pip install -e .
 
 Isso instala o comando `bit2` no seu PATH (usa o `pyproject.toml`).
 
-### Setup via copia
+### Setup via cópia
 
 Se não quiser usar pip:
 
 ```bash
 git clone https://github.com/beaverbit/bit2.git
 cd bit2
+# torna o wrapper executavel
+chmod +x bit2.sh
 make install-global   # copia pra /usr/local/bin
 ```
 
-Ou roda direto do diretório:
+Ou roda direto do diretório (sem `chmod`):
 
 ```bash
-./bit2.sh --top -sV scanme.nmap.org
+bash bit2.sh --top -sV scanme.nmap.org
+# ou
+python3 bit2.py --top -sV scanme.nmap.org
+```
+
+### Nota sobre `make`
+
+O `Makefile` é opcional — só facilita a vida de quem desenvolve. Se você não tem `make` instalado:
+
+```bash
+# debian/ubuntu
+sudo apt install make
+
+# fedora
+sudo dnf install make
+
+# arch
+sudo pacman -S make
+```
+
+Sem `make`, use `pytest` diretamente:
+
+```bash
+pytest -q
+pytest --cov=bit2 --cov-report=term-missing
+python3 -m py_compile bit2.py bit2/*.py
 ```
 
 ---
@@ -138,7 +165,7 @@ bit2 --port-file ports.txt -sV scanme.nmap.org
 # retry em portas filtered (útil em redes com packet loss)
 bit2 -p 22,80,443 --retry 2 -T 0.5 alvo.com
 
-# modo live (streaming, sem ordenar por porta)
+# modo live (streaming, sem ordenar)
 bit2 --live -sV scanme.nmap.org
 
 # modo verboso, mostra portas fechadas e filtradas também
@@ -255,10 +282,10 @@ bit2/
 ├── .github/workflows/
 │   └── ci.yml             # GitHub Actions
 ├── bit2.py                # entry point (trivial)
-├── bit2.sh                # wrapper shell
+├── bit2.sh                # wrapper shell (rode `chmod +x bit2.sh` após clonar)
+├── Makefile               # atalhos (make test, make lint, make ci)
 ├── pyproject.toml         # empacotamento + config de testes
 ├── SECURITY.md            # política de segurança
-├── Makefile               # atalhos
 └── README.md
 ```
 
@@ -296,8 +323,11 @@ Algumas assinaturas são mais específicas que outras. SSH começa com `SSH-2.0-
 **Por que assinatura de banner por regex e não heurística mais sofisticada?**
 O objetivo é cobertura ampla com complexidade baixa. Um dicionário de regexes cobre ~80% dos casos reais. Fingerprinting profundo (tipo `nmap -sV`) exigiria uma base enorme de probes customizados — fora do escopo.
 
+**Por que `PROBES` só inclui portas HTTP-like (não TLS)?**
+Mandar `HEAD / HTTP/1.0` num socket TLS quebra o handshake e o servidor responde 400 (foi exatamente o que aconteceu no `python3 -m http.server` durante os testes). Por isso `443`, `8443` e `9443` ficam de fora: o `bit2` só recebe (espera banner espontâneo) em vez de enviar probe em claro.
+
 **Por que cor só quando `isatty()`?**
-Pra não sujar output quando redirecionado (`bit2 ... > out.txt`). Regra padrão de CLIs bem-comportados. Também respeita `NO_COLOR` env var (convenção do https://no-color.org).
+Pra não sujar output quando redirecionado (`bit2 ... > out.txt`). Regra padrão de CLIs bem-comportados. Também respeita `NO_COLOR` env var (convenção do https://no-color.org). **A barra de progresso não depende de cor** — só de `isatty()`, pra funcionar mesmo com `--no-color`.
 
 **Por que XML só com portas relevantes?**
 XML é pra consumo por ferramentas, não debug humano. Portas `closed` e `filtered` poluem e não interessam. `-v` no modo XML vira no-op — quem quer debug usa modo normal.
@@ -309,11 +339,12 @@ XML é pra consumo por ferramentas, não debug humano. Portas `closed` e `filter
 - **Sem SYN scan (half-open)** — apenas connect scan; requer root + raw socket
 - **Sem detecção de OS** — fingerprinting por TTL/options ficou fora do escopo
 - **Sem IPv6** — apenas IPv4 (`AF_INET`)
-- **Banner grabbing passivo** — não envia probes customizados pra todos os serviços, apenas pros que estão mapeados em `PROBES`
+- **Banner grabbing passivo** — não envia probes customizados pra todos os serviços, apenas pros que estão mapeados em `PROBES`/`HTTP_LIKE_PORTS`
 - **UDP sem root é impreciso** — portas `closed` só são detectadas se o ICMP port-unreachable chegar. Sem root, `open|filtered` pode ser tanto porta filtrada quanto aberta que não respondeu
 - **Scheduler global não é paralelo entre hosts** — em scans multi-alvo, cada host é processado sequencialmente (portas dentro do host são paralelas). Vale otimização futura pra redes grandes
 - **`-t` alto pode atingir file descriptor limit** — se rodar em sistema com `ulimit -n` baixo, use `ulimit -n 4096` antes
 - **`make install` requer Python com suporte a `venv`** — em distros com PEP 668 (Ubuntu 24+), usar venv antes
+- **`bit2.sh` precisa de `chmod +x`** após clonar (git não preserva bit de execução em alguns casos)
 
 ---
 
@@ -324,6 +355,7 @@ XML é pra consumo por ferramentas, não debug humano. Portas `closed` e `filter
 ```bash
 git clone https://github.com/beaverbit/bit2.git
 cd bit2
+chmod +x bit2.sh
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -e ".[dev]"
@@ -338,6 +370,15 @@ make lint         # valida sintaxe py + sh
 make fmt          # roda black (se instalado)
 make ci           # lint + test (o que a CI roda)
 make clean        # limpa pycache, coverage, build
+```
+
+Sem `make`:
+
+```bash
+pytest -q
+pytest --cov=bit2 --cov-report=term-missing
+python3 -m py_compile bit2.py bit2/*.py
+bash -n bit2.sh
 ```
 
 ### CI

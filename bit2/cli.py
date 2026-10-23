@@ -120,12 +120,13 @@ def scan_single_target(host, ip, jobs, args, proto_label, human_output):
     results = []
     total = len(jobs)
     done = 0
+    # progresso so faz sentido em tty e com mais de uma porta,
+    # e NAO deve depender de cor (--no-color nao desliga barra)
     show_progress = (
         human_output
-        and not args.live
         and not args.no_progress
+        and not args.live
         and sys.stderr.isatty()
-        and color_enabled()
         and total > 1
     )
 
@@ -141,14 +142,21 @@ def scan_single_target(host, ip, jobs, args, proto_label, human_output):
                         print_result(r)
                     elif args.verbose and not args.open_only:
                         print_result(r)
+                    # em modo live, mostra progresso resumido no stderr
+                    # pra nao parecer travado quando nenhuma porta responde
+                    if sys.stderr.isatty() and not args.no_progress:
+                        sys.stderr.write(
+                            CLR_LINE + c(f"[live] {done}/{total}", DIM)
+                        )
+                        sys.stderr.flush()
                 elif show_progress:
                     print_progress(done, total, t0)
         except KeyboardInterrupt:
-            if show_progress:
+            if show_progress or (human_output and args.live and sys.stderr.isatty()):
                 clear_progress()
             raise
 
-    if show_progress:
+    if show_progress or (human_output and args.live and sys.stderr.isatty() and not args.no_progress):
         clear_progress()
 
     if human_output and not args.live:
@@ -251,6 +259,31 @@ def _resolve_port_source(args):
     return None
 
 
+def _choose_ports(args, explicito):
+    """Decide quais portas TCP e UDP escanear com base nas flags."""
+    tcp_ports = []
+    udp_ports = []
+
+    if args.udp and not args.also_tcp and not args.top:
+        # -sU puro: so UDP (portas explicitas ou top UDP)
+        udp_ports = explicito if explicito is not None else UDP_TOP_PORTS
+        tcp_ports = []
+    elif args.udp and (args.also_tcp or args.top):
+        # -sU + --also-tcp/--top: TCP + UDP
+        udp_ports = explicito if explicito is not None else UDP_TOP_PORTS
+        tcp_ports = TOP_PORTS
+    elif args.top_udp:
+        # --top-udp sem -sU: UDP top + TCP (explicito ou top)
+        udp_ports = UDP_TOP_PORTS
+        tcp_ports = explicito if explicito is not None else TOP_PORTS
+    else:
+        # modo TCP normal
+        tcp_ports = explicito if explicito is not None else TOP_PORTS
+        udp_ports = []
+
+    return tcp_ports, udp_ports
+
+
 def main(argv=None):
     ap = build_parser()
     args = ap.parse_args(argv)
@@ -265,18 +298,7 @@ def main(argv=None):
     human_output = args.output == "normal"
 
     explicito = _resolve_port_source(args)
-    tcp_ports = []
-    udp_ports = []
-
-    if args.udp:
-        if explicito is not None:
-            udp_ports = explicito
-        else:
-            udp_ports = UDP_TOP_PORTS
-        if args.also_tcp:
-            tcp_ports = TOP_PORTS
-    else:
-        tcp_ports = explicito if explicito is not None else TOP_PORTS
+    tcp_ports, udp_ports = _choose_ports(args, explicito)
 
     if not tcp_ports and not udp_ports:
         print(c("erro: nenhuma porta pra escanear", RED), file=sys.stderr)
@@ -320,6 +342,10 @@ def main(argv=None):
         if not targets:
             if human_output:
                 print(c("nenhum host vivo, saindo", YEL), file=sys.stderr)
+                print(
+                    c("dica: use --skip-discovery pra escanear mesmo assim, ou --discovery-ports pra mudar as portas do probe", DIM),
+                    file=sys.stderr,
+                )
             sys.exit(0)
     elif multi and args.skip_discovery and human_output:
         print(c("[*] discovery pulado, escaneando todos os alvos", DIM), file=sys.stderr)

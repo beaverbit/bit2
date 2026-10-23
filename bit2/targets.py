@@ -6,7 +6,7 @@ import socket
 import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from .colors import CLR_LINE, DIM, GRN, YEL, c, color_enabled
+from .colors import CLR_LINE, DIM, GRN, YEL, c
 from .scanner import probe_host
 from .signatures import DISCOVERY_PORTS
 
@@ -115,10 +115,10 @@ def discover_hosts(targets, timeout, threads, ports=None):
                     vivos.append((label, ip))
             except Exception:
                 pass
-            if sys.stderr.isatty() and color_enabled():
+            if sys.stderr.isatty():
                 sys.stderr.write(f"{CLR_LINE}{c('[disc]', DIM)} {done}/{total}")
                 sys.stderr.flush()
-    if sys.stderr.isatty() and color_enabled():
+    if sys.stderr.isatty():
         sys.stderr.write(CLR_LINE)
         sys.stderr.flush()
     print(c(f"[+] {len(vivos)}/{total} hosts vivos", GRN if vivos else YEL), file=sys.stderr)

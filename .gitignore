@@ -1,19 +1,26 @@
+# python
 __pycache__/
-*.pyc
-*.pyo
-*.pyd
-*.json
-.venv/
-venv/
-env/
-.pytest_cache/
-.coverage
-coverage.xml
-htmlcov/
+*.py[cod]
+*.egg-info/
 build/
 dist/
-*.egg-info/
-.idea/
+.venv/
+venv/
+
+# test / coverage
+.pytest_cache/
+.coverage
+htmlcov/
+coverage.xml
+
+# artefatos locais de teste
+hosts.txt
+ports.txt
+out.json
+out.xml
+*.log
+
+# editor
 .vscode/
-.DS_Store
-*.xml
+.idea/
+*.swp

@@ -48,6 +48,8 @@ UDP_TOP_PORTS = [
 SIGS = [
     ("SSH", re.compile(rb"^SSH-([\d.]+)-([\w.]+)"), 1.00),
     ("HTTP", re.compile(rb"^HTTP/[\d.]+ \d+"), 0.98),
+    # http server do python responde com "<!DOCTYPE HTML" em erro 400/404
+    ("HTTP", re.compile(rb"^<!DOCTYPE HTML", re.I), 0.70),
     ("FTP", re.compile(rb"^220[- ].*FTP", re.I), 0.90),
     ("SMTP", re.compile(rb"^220[- ].*(SMTP|ESMTP|Postfix|Exim|Sendmail)", re.I), 0.92),
     ("POP3", re.compile(rb"^\+OK.*(POP|ready)", re.I), 0.85),
@@ -65,13 +67,23 @@ SIGS = [
 ]
 
 # payload pra cutucar alguns servicos e ver se responde (TCP)
-PROBES = {
-    80: b"HEAD / HTTP/1.0\r\nHost: %s\r\n\r\n",
-    8080: b"HEAD / HTTP/1.0\r\nHost: %s\r\n\r\n",
-    8000: b"HEAD / HTTP/1.0\r\nHost: %s\r\n\r\n",
-    8443: b"HEAD / HTTP/1.0\r\nHost: %s\r\n\r\n",
-    443: b"",
+_HTTP_PROBE = b"HEAD / HTTP/1.0\r\nHost: %s\r\n\r\n"
+
+# portas que costumam ser HTTP(S) puro. pra essas mandamos HEAD.
+# ssl (443, 8443, 9443) fica de fora: HEAD em socket TLS quebra o handshake.
+HTTP_LIKE_PORTS = {
+    80, 81, 88, 591, 3000, 5000, 7001, 7002, 8000, 8001, 8008, 8009,
+    8010, 8080, 8081, 8082, 8083, 8085, 8088, 8090, 8091, 8180, 8181,
+    8200, 8300, 8400, 8500, 8800, 8888, 8889, 8899, 8983, 9000, 9001,
+    9002, 9080, 9090, 9091, 9200, 9300, 9443, 9999, 10000, 50000,
 }
+
+# monta o dict final: http-like usa HEAD, o resto fica vazio
+PROBES = {p: _HTTP_PROBE for p in HTTP_LIKE_PORTS}
+# 443 e 8443 sao TLS: mandar HEAD em claro quebra o handshake
+PROBES.pop(443, None)
+PROBES.pop(8443, None)
+PROBES.pop(9443, None)
 
 # payloads UDP por porta conhecida
 UDP_PAYLOADS = {
